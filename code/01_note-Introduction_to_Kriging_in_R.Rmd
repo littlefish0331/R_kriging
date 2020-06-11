@@ -334,16 +334,154 @@ and the second is an SPDF where those variables reside.
 第一個參數表示一個或多個變量在空間上的交互方式，
 第二個參數是那些變量所在的SPDF。
 
-For the `fit.variogram` function, a sample variogram is the first argument. The second is the model, with parameters, to be fit to the sample variogram. For a list of all possible variograms that can be used, call vgm, and to see graphical properties/characteristics of these models, call show.vgms.
-對於fit.variogram函數，樣本變量圖是第一個參數。 第二個是帶有參數的模型，以適合樣本變異函數。 有關可以使用的所有可能的方差圖的列表，請調用vgm，並查看這些模型的圖形屬性/特徵，請調用show.vgms。
+For the `fit.variogram` function, a sample variogram is the first argument.  
+The second is the model, with parameters, to be fit to the sample variogram.  
+對於`fit.variogram`函數，樣本變量圖是第一個參數。
+第二個是帶有參數的模型，以適合樣本變異函數。 
 
-With the sample and fit variogram, one can plot them together to see how well the fit was:
+For a list of all possible variograms that can be used, 
+call `vgm`, and to see graphical properties/characteristics of these models, 
+call `show.vgms`.
+有關可以使用的所有可能的方差圖的列表，
+請調用 `vgm`，並查看這些模型的圖形屬性/特徵，請調用`show.vgms`。
+
+```{r}
+vgm()
+
+# 不同距離下，各種Variogram Model Functions的變化。
+show.vgms()
+```
+
+With the sample and fit variogram, one can plot them together to see how well the fit was:  
+使用樣本和擬合方差圖，可以將它們一起繪製以查看擬合程度：
+
+```{r}
+plot(lzn.vgm, lzn.fit) # plot the sample values, along with the fit model
+```
+
+--
+
+## 3) Performing Kriging
+
+### Setup
+
+By definition, interpolation is estimating values at points we don’t have measurements 
+for based on the points for which we do have measurements. 
+根據定義，插值是根據我們有測量值的點來估算我們沒有測量值的點的值。
+
+So we need two spatial domains: one having values associated with the points, 
+and one for which we want estimates. 
+因此，我們需要兩個空間域: 一個具有與點關聯的值，另一個需要估計。
+
+In this example, the spatial domains we use are those of “meuse” and “meuse.grid”:  
+在此示例中，我們使用的空間域是“ meuse”和“ meuse.grid”的空間域：
+
+```{r}
+# load spatial domain to interpolate over
+data("meuse.grid")
+```
+
+```{r}
+# to compare, recall the bubble plot above; 
+# those points were what there were values for. 
+# this is much more sparse
+# 比較一下，回想上面的氣泡圖;
+# 這些點是有價值的。
+# 這更稀疏
+plot1 <- meuse %>% as.data.frame %>%
+  ggplot(aes(x, y)) + geom_point(size=1) + coord_equal() + 
+  ggtitle("Points with measurements")
+```
+
+```{r}
+# this is clearly gridded over the region of interest
+# 這顯然是在感興趣的區域內
+plot2 <- meuse.grid %>% as.data.frame %>%
+  ggplot(aes(x, y)) + geom_point(size=1) + coord_equal() + 
+  ggtitle("Points at which to estimate")
+```
+
+```{r}
+library(gridExtra)
+grid.arrange(plot1, plot2, ncol = 2)
+```
+
+### Computation
+
+Once we have the prepared all of the above, we are now ready to krige. 
+This can be done with the gstat::krige function, which usually takes four arguments:
+準備好上述所有內容後，我們現在就可以開始克里格了。 
+這可以通過 gstat::krige 函數完成，該函數通常帶有四個參數：
+
+1. The model formula.
+2. An SPDF of the spatial domain that has measurements.
+3. An SPDF of the spatial domain to krige over.
+4. A variogram model fitted to the data.
+
+1. 模型公式。
+2. 具有測量結果的空間域的SPDF。
+3. 要遍歷的空間域的SPDF。
+4. 擬合數據的方差圖模型。
+   
+Note that the second and third arguments have to be SPDF’s and cannot just be dataframes.
+請注意，第二個和第三個參數必須是SPDF，不能僅是數據框。
+
+Now, the kriging step can be performed in a single function call:
+現在，可以在單個函數調用中執行克里金步驟：
+
+```{r}
+coordinates(meuse.grid) <- ~ x + y # step 3 above
+lzn.kriged <- krige(formula = log(zinc) ~ 1, 
+                    locations = meuse, 
+                    newdata = meuse.grid, 
+                    model = lzn.fit)
+```
+
+These results could be visualized as a heatmap:  
+這些結果可以顯示為熱圖：
+
+```{r}
+lzn.kriged %>% as.data.frame %>%
+  ggplot(aes(x = x, y = y)) + geom_tile(aes(fill = var1.pred)) + coord_equal() +
+  scale_fill_gradient(low = "yellow", high = "red") +
+  scale_x_continuous(labels = comma) + scale_y_continuous(labels = comma) +
+  theme_bw()
+```
+
+From this we see that the zinc concentrations(濃度) tend to be higher closer to the coast 
+(`var1.pred` is the predicted measurement for the variable being interpolated). 
+Moreover, lzn.kriged contains the variance of each prediction as well.
+
+從中我們可以看到，鋅的濃度趨向於更接近海岸時較高
+（var1.pred是對要插值的變量的預測測量值）。 
+此外，lzn.kriged也包含每個預測的方差。
+
+---
+
+# Further Resources
+
+This document was intended to be a light introduction on how kriging is done for someone looking to start using R for spatial data analysis. 
+本文檔旨在簡要介紹如何為希望開始使用R進行空間數據分析的人進行克里金法。
+
+For a little more detail, see the document where I work through the `meuse tutorial` and elaborate on parts that weren’t immediately clear to me. 
+有關更多詳細信息，請參閱我操作的“meuse tutorial”文檔，
+有詳細說明我尚不清楚的部分。 
+
+That covers more on how some of these different objects are structured.
+這涵蓋了更多有關這些不同對象的結構的信息。
 
 
+Now, depending on how much data you are working with, 
+you might not be able to manually specify the parameters for each variogram you fit a set of data to. 
+現在，根據要使用的數據量，
+您可能無法為適合一組數據的每個變異函數手動指定參數。
 
-
-
-
+Once you become more comfortable with how variogram modelling and kriging works, 
+you might want to take a look at the `automap` package by Paul Hiemstra; 
+it’s been extremely helpful for the modeling work I do.
+ 一旦您對方差圖建模和kriging法的工作方式變得更加滿意之後，
+您可能想看看Paul Hiemstra的自動地圖包。 
+對我所做的建模工作非常有幫助。
 
 
 ---
